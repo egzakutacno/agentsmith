@@ -4,10 +4,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"net"
+	"net/url"
 	"os"
+	"strings"
 	"time"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
+	"golang.org/x/net/proxy"
 
 	"agentsmith/server"
 )
@@ -21,7 +25,7 @@ type Response struct {
 	Cmd      string `json:"cmd"`
 	Stdout   string `json:"stdout,omitempty"`
 	Stderr   string `json:"stderr,omitempty"`
-	ExitCode int    `json:"exit_code,omitempty"`
+	ExitCode int    `json:"exit_code"`
 	Hostname string `json:"hostname,omitempty"`
 	Uptime   int64  `json:"uptime,omitempty"`
 	Version  string `json:"version,omitempty"`
@@ -45,7 +49,7 @@ type Client struct {
 	statusTopic string
 }
 
-func New(broker string) (*Client, error) {
+func New(broker string, proxyAddr string) (*Client, error) {
 	hostname, _ := os.Hostname()
 	clientID := fmt.Sprintf("agentsmith-%s-%d", hostname, time.Now().UnixNano()%100000)
 
@@ -77,6 +81,19 @@ func New(broker string) (*Client, error) {
 		}
 	})
 	opts.SetDefaultPublishHandler(c.handleMessage)
+
+	if proxyAddr != "" {
+		proxyAddr = strings.TrimPrefix(proxyAddr, "socks5://")
+		proxyAddr = strings.TrimPrefix(proxyAddr, "socks5h://")
+		dialer, err := proxy.SOCKS5("tcp", proxyAddr, nil, proxy.Direct)
+		if err != nil {
+			return nil, fmt.Errorf("SOCKS5 setup: %w", err)
+		}
+		opts.SetCustomOpenConnectionFn(func(uri *url.URL, options mqtt.ClientOptions) (net.Conn, error) {
+			return dialer.Dial("tcp", uri.Host)
+		})
+		log.Printf("Using SOCKS5 proxy: %s", proxyAddr)
+	}
 
 	client := mqtt.NewClient(opts)
 	if token := client.Connect(); token.Wait() && token.Error() != nil {

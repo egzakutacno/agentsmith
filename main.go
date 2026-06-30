@@ -19,8 +19,9 @@ import (
 const version = "1.0.0"
 
 var brokers = []string{
-	"tcp://test.mosquitto.org:1883",
+	"tcp://100.85.244.80:1883",
 	"tcp://broker.emqx.io:1883",
+	"tcp://test.mosquitto.org:1883",
 	"tcp://broker.hivemq.com:1883",
 }
 
@@ -51,13 +52,18 @@ func main() {
 	initLog()
 	log.Printf("AgentSmith %s starting...", version)
 
+	proxyAddr := os.Getenv("AGENTSMITH_PROXY")
+	if proxyAddr != "" {
+		log.Printf("Using proxy: %s", proxyAddr)
+	}
+
 	hostname, _ := os.Hostname()
 
 	var mqttClient *mqtt.Client
 	var err error
 	for _, broker := range brokers {
 		log.Printf("Trying MQTT broker: %s", broker)
-		mqttClient, err = mqtt.New(broker)
+		mqttClient, err = mqtt.New(broker, proxyAddr)
 		if err == nil {
 			log.Printf("Connected to broker: %s", broker)
 			break

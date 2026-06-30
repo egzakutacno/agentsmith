@@ -4,7 +4,7 @@ AgentSmith Controller — RPi MQTT client za slanje komandi Windows agentima.
 
 Usage:
   python controller.py list                    # Lista aktivnih agenata
-  python controller.py exec <hostname> <cmd>   # Izvrši cmd komandu
+  python controller.py execute <hostname> <cmd> # Izvrši cmd komandu
   python controller.py ps <hostname> <cmd>     # Izvrši PowerShell komandu
   python controller.py info <hostname>         # Informacije o agentu
   python controller.py shell <hostname>        # Interaktivni shell
@@ -17,7 +17,7 @@ import threading
 
 import paho.mqtt.client as mqtt
 
-BROKER = "test.mosquitto.org"
+BROKER = "127.0.0.1"
 PORT = 1883
 TIMEOUT = 10
 
@@ -116,6 +116,9 @@ class AgentSmithController:
                 if line.startswith("ps:"):
                     cmd_type = "ps"
                     command = line[3:].strip()
+                elif line.startswith("cmd:"):
+                    cmd_type = "execute"
+                    command = line[4:].strip()
                 else:
                     cmd_type = "execute"
                     command = line
@@ -139,7 +142,7 @@ def main():
         if cmd == "list":
             ctrl.list_agents()
 
-        elif cmd in ("exec", "ps", "info"):
+        elif cmd in ("execute", "exec", "ps", "info"):
             if len(sys.argv) < 3:
                 print(f"Usage: python controller.py {cmd} <hostname> [command]")
                 return

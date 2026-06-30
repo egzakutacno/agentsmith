@@ -74,33 +74,47 @@ func doInstall() {
 	exe, _ := os.Executable()
 	name := "AgentSmith"
 
-	dest := filepath.Join(os.Getenv("ProgramFiles"), "AgentSmith", "agentsmith.exe")
-	os.MkdirAll(filepath.Dir(dest), 0755)
-	copyFile(exe, dest)
+	dest := filepath.Join(os.Getenv("LOCALAPPDATA"), "AgentSmith", "agentsmith.exe")
+	if err := os.MkdirAll(filepath.Dir(dest), 0755); err != nil {
+		log.Printf("Failed to create directory: %v", err)
+	}
+	if err := copyFile(exe, dest); err != nil {
+		log.Printf("Failed to copy binary: %v", err)
+	}
 
 	psCmd := fmt.Sprintf(
 		`powershell -WindowStyle Hidden -Command Start-Process -FilePath '%s' -WindowStyle Hidden`,
 		dest,
 	)
 
-	exec.Command("schtasks", "/create",
+	create := exec.Command("schtasks", "/create",
 		"/tn", name, "/tr", psCmd,
 		"/sc", "ONLOGON", "/ru", os.Getenv("USERNAME"), "/f",
-	).Run()
+	)
+	if out, err := create.CombinedOutput(); err != nil {
+		log.Printf("schtasks create failed: %v\n%s", err, out)
+	}
 
-	exec.Command("schtasks", "/run", "/tn", name).Run()
+	run := exec.Command("schtasks", "/run", "/tn", name)
+	if out, err := run.CombinedOutput(); err != nil {
+		log.Printf("schtasks run failed: %v\n%s", err, out)
+	}
+
 	fmt.Println("AgentSmith installed and started.")
 }
 
 func doRemove() {
 	exec.Command("taskkill", "/f", "/im", "agentsmith.exe").Run()
-	exec.Command("schtasks", "/delete", "/tn", "AgentSmith", "/f").Run()
-	os.RemoveAll(filepath.Join(os.Getenv("ProgramFiles"), "AgentSmith"))
+	out, _ := exec.Command("schtasks", "/delete", "/tn", "AgentSmith", "/f").CombinedOutput()
+	fmt.Print(string(out))
+	os.RemoveAll(filepath.Join(os.Getenv("LOCALAPPDATA"), "AgentSmith"))
 	fmt.Println("AgentSmith removed.")
 }
 
-func copyFile(src, dst string) {
-	data, _ := os.ReadFile(src)
-	os.MkdirAll(filepath.Dir(dst), 0755)
-	os.WriteFile(dst, data, 0644)
+func copyFile(src, dst string) error {
+	data, err := os.ReadFile(src)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(dst, data, 0644)
 }
